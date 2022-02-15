@@ -1,42 +1,42 @@
-ARG OWNER=jupyter
-ARG BASE_CONTAINER=$OWNER/minimal-notebook
-FROM $BASE_CONTAINER
+FROM jupyter/minimal-notebook
 
-#LABEL maintainer="Jupyter Project <jupyter@googlegroups.com>"
+COPY requirements.txt /temp/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /temp/requirements.txt
 
-COPY dockerpy_remote_exec.ipynb work/
+RUN python3 -m bash_kernel.install
+RUN python3 -m sos_notebook.install
+RUN python3 -m sshkernel install --user
+RUN jupyter labextension install transient-display-data
+RUN jupyter labextension install jupyterlab-sos
+
+# Change user name
+# Install all OS dependencies for fully functional notebook server
 
 USER root
-
-# Install all OS dependencies for fully functional notebook server
-RUN apt-get update --yes && \
-    apt-get install --yes --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     openssh-server \
     ssh \
     net-tools && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-USER ${NB_UID}
 
-RUN pip install docker
-
-RUN pip install -U sshkernel && \
-    python -m sshkernel install --user
-
-RUN pip install -U bash_kernel && \
-    python -m bash_kernel.install
-
-RUN pip install -U sos-notebook sos-papermill sos-r && \
-    python -m sos_notebook.install
-RUN jupyter labextension install transient-display-data
-RUN jupyter labextension install jupyterlab-sos
+ENV NEW_NB_USER=user
+ENV HOME=/home/$NEW_NB_USER
+RUN usermod --login $NEW_NB_USER --move-home --home $HOME $NB_USER
+WORKDIR $HOME/work
+ENV CHOWN_EXTRA=WORKDIR
+ENV CHOWN_EXTRA_OPTS=-R
+ENV GRANT_SUDO=yes
 
 # Create alternative for nano -> nano-tiny
 #RUN update-alternatives --install /usr/bin/nano nano /bin/nano-tiny 10
 
 # Switch back to jovyan to avoid accidental container runs as root
-#USER ${NB_UID}
-
+USER ${NEW_NB_USER}
 
 RUN mkdir $HOME/.ssh/
 RUN ssh-keygen -b 2048 -t rsa -f $HOME/.ssh/id_rsa -q -N ""
+COPY config $HOME/.ssh/
+
+RUN git clone https://github.com/lbors/demo-jupyter.git
